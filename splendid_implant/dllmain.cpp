@@ -6,23 +6,23 @@
 
 bool is_in_game( game_state_t* state_manager )
 {
-	const auto game_state = state_manager->game_state;
-
-	// == prep phase, == action phase
-	return game_state == PREP_PHASE || game_state == ACTION_PHASE;
+	return state_manager->game_state == PREP_PHASE || state_manager->game_state == ACTION_PHASE;
 }
 
 unsigned long main_thread( void* )
 {
-	// xref: PlayerMarkerComponent
-	const auto player_marker_xref_sig = impl::find_signature( "RainbowSix.exe", "4c 89 0b 48 8d 15" ) + 3;
+	std::this_thread::sleep_for( std::chrono::seconds( 20 ) );
 
-	if ( reinterpret_cast< uint64_t >( player_marker_xref_sig ) <= 3 )
+	// xref: PlayerMarkerComponent
+	auto player_marker_xref_sig = reinterpret_cast< uint64_t >( impl::find_signature( "RainbowSix.exe", "4c 89 0b 48 8d 15" ) );
+
+	if ( !player_marker_xref_sig )
 	{
 		MessageBoxA( nullptr, "player marker sig is invalid", "secret.club", MB_OK );
 		return 0;
 	}
 
+	player_marker_xref_sig -= 21;
 	const auto player_marker_component = player_marker_xref_sig + *reinterpret_cast< int32_t* >( player_marker_xref_sig + 3 ) + 7;
 
 	// xref: R6TrackingManager or attackingTeamIndex (first mov rax above)
@@ -75,24 +75,26 @@ unsigned long main_thread( void* )
 			if ( higher_bits == BOT_NORMAL || higher_bits == BOT_NORMAL2 )
 				continue;
 
-			const auto event_listener = entity->event_listener;
+			const auto event_listener = *reinterpret_cast< uint64_t* >( entity + 0x28 );
 
 			if ( !event_listener )
 				continue;
 
-			const auto components = event_listener->components;
+			const auto components_list = *reinterpret_cast< uint64_t* >( event_listener + 0xd8 );
 
-			if ( !components.contents )
+			if ( !components_list )
 				continue;
 
-			for ( auto j = 0u; j < components.size; j++ )
+			// iterate from 0x80 till 0xb0
+			for ( auto j = 16ull; j < 22ull; j++ )
 			{
-				const auto component = reinterpret_cast< uint8_t* >( components.contents[ j ] );
+				const auto component = *reinterpret_cast< uint64_t* >( components_list + ( i * 8ull ) );
 
-				if ( !component || *reinterpret_cast< uint8_t** >( component ) != player_marker_component )
+				if ( !component || *reinterpret_cast< uint64_t* >( component ) != player_marker_component )
 					continue;
 
-				*reinterpret_cast< bool* >( component + 0x534 ) = esp_enabled;
+				*reinterpret_cast< bool* >( component + 0x552 ) = esp_enabled;
+				*reinterpret_cast< bool* >( component + 0x554 ) = esp_enabled;
 			}
 		}
 
